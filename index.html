@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#2C1A0E">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Catalog and value your tabletop RPG book collection">
+  <title>RPG Vault</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══════════════════════════════════════
+       COLLECTION SCREEN
+  ══════════════════════════════════════ -->
+  <div id="screen-collection" class="screen">
+    <div class="topbar">
+      <div class="topbar-left">
+        <h1>⚔ RPG Vault</h1>
+        <p id="collectionCount">0 books in collection</p>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" onclick="showScreen('stats')" aria-label="Stats">📊</button>
+      </div>
+    </div>
+    <div class="scroll-body">
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="search" placeholder="Search title, system, edition…" oninput="handleSearch(event)" id="searchInput">
+      </div>
+      <div class="filter-row" id="filterRow"></div>
+      <div class="section-label">Your collection</div>
+      <div id="bookList"></div>
+    </div>
+    <button class="fab" onclick="showAddMenu()" aria-label="Add book">＋</button>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       STATS SCREEN
+  ══════════════════════════════════════ -->
+  <div id="screen-stats" class="screen">
+    <div class="topbar">
+      <div class="topbar-left">
+        <h1>📊 Collection stats</h1>
+        <p>Your vault at a glance</p>
+      </div>
+    </div>
+    <div class="scroll-body">
+      <div class="stats-grid" id="statTiles"></div>
+      <div class="section-label">Books by system</div>
+      <div id="statBars"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       ADD SCREEN
+  ══════════════════════════════════════ -->
+  <div id="screen-add" class="screen">
+    <div class="topbar">
+      <div class="topbar-left">
+        <h1>Add a book</h1>
+        <p>Choose how to add it</p>
+      </div>
+    </div>
+    <div class="scroll-body">
+      <div class="add-option" onclick="showCamera()">
+        <div class="add-option-icon">📷</div>
+        <div class="add-option-text">
+          <strong>Scan book cover</strong>
+          <span>Take a photo — AI identifies title, edition &amp; printing</span>
+        </div>
+      </div>
+      <div class="add-option" onclick="showForm({})">
+        <div class="add-option-icon">✏️</div>
+        <div class="add-option-text">
+          <strong>Add manually</strong>
+          <span>Enter title, publisher, edition, printing, condition and prices</span>
+        </div>
+      </div>
+      <div class="add-option" onclick="choosePhoto()">
+        <div class="add-option-icon">🖼️</div>
+        <div class="add-option-text">
+          <strong>Choose from gallery</strong>
+          <span>Pick an existing photo from your camera roll</span>
+        </div>
+      </div>
+
+      <div style="margin-top:24px">
+        <div class="section-label">Add to wishlist</div>
+        <div class="add-option" onclick="addWishItem()">
+          <div class="add-option-icon">💛</div>
+          <div class="add-option-text">
+            <strong>Add to wishlist</strong>
+            <span>Track books you're hunting for</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       WISHLIST SCREEN
+  ══════════════════════════════════════ -->
+  <div id="screen-wishlist" class="screen">
+    <div class="topbar">
+      <div class="topbar-left">
+        <h1>💛 Wishlist</h1>
+        <p>Books you're hunting for</p>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" onclick="addWishItem()" aria-label="Add to wishlist">＋</button>
+      </div>
+    </div>
+    <div class="scroll-body">
+      <div id="wishList"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       DETAIL VIEW (overlays nav)
+  ══════════════════════════════════════ -->
+  <div id="detailView" class="screen">
+    <div class="detail-topbar">
+      <button class="icon-btn" onclick="goBack()" aria-label="Back">←</button>
+      <h2 id="detailTitle"></h2>
+      <button class="icon-btn" onclick="editBook(state.detailId)" aria-label="Edit">✏️</button>
+      <button class="icon-btn" onclick="deleteBook(state.detailId)" aria-label="Delete">🗑</button>
+    </div>
+    <div class="scroll-body">
+      <div id="detailHero" class="detail-hero"></div>
+      <div class="price-card" id="detailPrices"></div>
+      <div id="detailExtra"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       CAMERA VIEW
+  ══════════════════════════════════════ -->
+  <div id="cameraView" class="screen" style="background:#000">
+    <div class="camera-topbar">
+      <button class="icon-btn" style="color:#fff" onclick="goBack()" aria-label="Back">←</button>
+      <span>Scan book cover</span>
+    </div>
+    <div class="viewfinder-wrap">
+      <video id="cameraVideo" autoplay playsinline muted style="display:none"></video>
+      <div id="cameraPlaceholder" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">
+        <div style="text-align:center;color:#A07840">
+          <div style="font-size:48px;margin-bottom:14px">📷</div>
+          <p style="font-size:14px">Starting camera…</p>
+        </div>
+      </div>
+      <div class="viewfinder-overlay">
+        <div class="viewfinder-frame"></div>
+      </div>
+      <div class="scanning-overlay" id="scanningOverlay">
+        <div class="scan-spinner"></div>
+        <p>Identifying book…</p>
+      </div>
+    </div>
+    <div class="camera-controls">
+      <button class="camera-file-btn" onclick="choosePhoto()">📂 Choose photo</button>
+      <button class="shutter-btn" onclick="capturePhoto()" aria-label="Take photo"></button>
+      <div style="width:90px"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       MANUAL ENTRY FORM
+  ══════════════════════════════════════ -->
+  <div id="formView" class="screen" data-cover-img="" data-edit-id="">
+    <div class="form-screen-topbar">
+      <button class="icon-btn" onclick="goBack()" aria-label="Back">←</button>
+      <h2>Book details</h2>
+    </div>
+    <div class="scroll-body">
+      <div id="scanBanner" style="display:none;margin-bottom:14px"></div>
+
+      <div class="form-group">
+        <label>Title *</label>
+        <input id="fTitle" type="text" placeholder="e.g. Player's Handbook">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Game system</label>
+          <input id="fSystem" type="text" placeholder="e.g. D&D">
+        </div>
+        <div class="form-group">
+          <label>Publisher</label>
+          <input id="fPublisher" type="text" placeholder="e.g. TSR">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Edition</label>
+          <input id="fEdition" type="text" placeholder="e.g. 1st Edition">
+        </div>
+        <div class="form-group">
+          <label>Printing</label>
+          <input id="fPrinting" type="text" placeholder="e.g. 1st Printing">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Year</label>
+          <input id="fYear" type="text" inputmode="numeric" placeholder="e.g. 1978">
+        </div>
+        <div class="form-group">
+          <label>Condition</label>
+          <select id="fCondition">
+            <option value="Fine">Fine / Near Mint</option>
+            <option value="Very Good+">Very Good+ (VG+)</option>
+            <option value="Very Good" selected>Very Good (VG)</option>
+            <option value="Good">Good</option>
+            <option value="Fair">Fair</option>
+            <option value="Poor">Poor</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:8px">Estimated prices (optional)</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">
+        Enter rough eBay estimates for this book in this condition. You can update these any time.
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+        <div class="form-group">
+          <label>Low $</label>
+          <input id="fPriceLow" type="text" inputmode="decimal" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>Mid $</label>
+          <input id="fPriceMid" type="text" inputmode="decimal" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>High $</label>
+          <input id="fPriceHigh" type="text" inputmode="decimal" placeholder="0">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="fNotes" placeholder="Signed copy, ex-library, water damage, completeness notes…"></textarea>
+      </div>
+
+      <button class="btn-primary" onclick="submitForm()">Save to vault</button>
+      <button class="btn-secondary" onclick="goBack()">Cancel</button>
+      <div style="height:24px"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       BOTTOM NAV
+  ══════════════════════════════════════ -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-screen="collection" onclick="showScreen('collection')">
+      <span class="nav-icon">📚</span>
+      <span>Collection</span>
+    </button>
+    <button class="nav-btn" data-screen="stats" onclick="showScreen('stats')">
+      <span class="nav-icon">📊</span>
+      <span>Stats</span>
+    </button>
+    <button class="nav-btn" data-screen="add" onclick="showScreen('add')">
+      <span class="nav-icon">➕</span>
+      <span>Add</span>
+    </button>
+    <button class="nav-btn" data-screen="wishlist" onclick="showScreen('wishlist')">
+      <span class="nav-icon">💛</span>
+      <span>Wishlist</span>
+    </button>
+  </nav>
+
+</div>
+
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
