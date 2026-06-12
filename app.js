@@ -505,13 +505,14 @@ async function startCamera() {
   const placeholder = document.getElementById('cameraPlaceholder');
   try {
     videoStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
     });
     video.srcObject = videoStream;
     video.style.display = 'block';
     if (placeholder) placeholder.style.display = 'none';
   } catch(e) {
     if (placeholder) {
+      placeholder.style.display = 'flex';
       placeholder.innerHTML = `<div style="text-align:center;color:#A07840;padding:40px">
         <div style="font-size:40px;margin-bottom:12px">📷</div>
         <p style="font-size:14px;line-height:1.6">Camera access denied.<br>Use "Choose photo" below instead.</p>
@@ -531,66 +532,149 @@ function stopCamera() {
 
 function capturePhoto() {
   const video = document.getElementById('cameraVideo');
-  const overlay = document.getElementById('scanningOverlay');
   let imageData = null;
-
   if (video && video.srcObject) {
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    imageData = canvas.toDataURL('image/jpeg', 0.8);
+    imageData = canvas.toDataURL('image/jpeg', 0.85);
   }
-
-  overlay.classList.add('show');
-  overlay.querySelector('p').textContent = 'Identifying book…';
-
-  setTimeout(() => {
-    overlay.classList.remove('show');
-    stopCamera();
-    // Show form pre-filled with a demo scan result
-    showScanResult({
-      title: '', system: '', publisher: '', edition: '', printing: '', year: '',
-      condition: 'Very Good', _scanned: true, coverImg: imageData
-    });
-  }, 2200);
+  if (!imageData) { showToast('No camera image captured'); return; }
+  stopCamera();
+  analyzeBookImage(imageData);
 }
 
 function choosePhoto() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
-  input.capture = 'environment';
   input.onchange = e => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      const overlay = document.getElementById('scanningOverlay');
-      overlay.classList.add('show');
-      overlay.querySelector('p').textContent = 'Identifying book…';
-      setTimeout(() => {
-        overlay.classList.remove('show');
-        stopCamera();
-        showScanResult({ title: '', _scanned: true, coverImg: ev.target.result });
-      }, 2000);
+      stopCamera();
+      analyzeBookImage(ev.target.result);
     };
     reader.readAsDataURL(file);
   };
   input.click();
 }
 
+// ─────────────────────────────────────────────
+//  AI BOOK IDENTIFICATION via Claude API
+// ─────────────────────────────────────────────
+async function analyzeBookImage(imageDataUrl) {
+  // Show scanning overlay on camera view first, then switch to form view with spinner
+  const overlay = document.getElementById('scanningOverlay');
+  overlay.classList.add('show');
+  overlay.querySelector('p').textContent = 'Identifying book…';
+
+  const base64 = imageDataUrl.split(',')[1];
+  const mediaType = imageDataUrl.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+
+  const prompt = `You are an expert on tabletop RPG books, especially collectible editions. Analyze this book cover image and identify the book.
+
+Return ONLY a JSON object with these exact fields, no markdown, no explanation:
+{
+  "title": "exact book title",
+  "system": "game system (e.g. D&D, Call of Cthulhu, Pathfinder, Warhammer Fantasy Roleplay, Shadowrun, Traveller, etc)",
+  "publisher": "publisher name (e.g. TSR, Chaosium, Paizo, Games Workshop, FASA, etc)",
+  "edition": "edition (e.g. 1st Edition, 2nd Edition, 3.5 Edition, 5th Edition, etc)",
+  "printing": "printing if determinable from cover (e.g. 1st Printing, or leave empty string if unknown)",
+  "year": "publication year as 4-digit string, or empty string if unknown",
+  "condition": "Very Good",
+  "priceLow": estimated low eBay sold price in USD as a number (no dollar sign),
+  "priceMid": estimated average eBay sold price in USD as a number,
+  "priceHigh": estimated high eBay sold price in USD as a number,
+  "notes": "any notable observations about this specific book or edition that would help a collector"
+}
+
+For prices, use your knowledge of the collectible RPG market. Consider the edition, publisher, and age. A 1st edition 1st printing AD&D book from TSR is worth far more than a later printing. Be realistic — base on actual eBay sold listings you know about. If you cannot identify the book at all, set title to empty string and all prices to 0.`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: mediaType, data: base64 }
+            },
+            { type: 'text', text: prompt }
+          ]
+        }]
+      })
+    });
+
+    const data = await response.json();
+    overlay.classList.remove('show');
+
+    if (!response.ok) {
+      showToast('AI scan failed — fill in manually');
+      showScanResult({ _scanned: true, coverImg: imageDataUrl });
+      return;
+    }
+
+    const text = data.content.map(c => c.text || '').join('').trim();
+    let parsed = {};
+    try {
+      const clean = text.replace(/```json|```/g, '').trim();
+      parsed = JSON.parse(clean);
+    } catch(e) {
+      showToast('Could not parse result — please fill in manually');
+      showScanResult({ _scanned: true, coverImg: imageDataUrl });
+      return;
+    }
+
+    if (!parsed.title) {
+      showToast('Book not recognized — please fill in manually');
+      showScanResult({ _scanned: true, coverImg: imageDataUrl });
+      return;
+    }
+
+    parsed.coverImg = imageDataUrl;
+    parsed._scanned = true;
+    parsed.priceUpdated = new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    showScanResult(parsed);
+    showToast('Book identified!');
+
+  } catch(err) {
+    overlay.classList.remove('show');
+    showToast('Network error — fill in manually');
+    showScanResult({ _scanned: true, coverImg: imageDataUrl });
+  }
+}
+
 function showScanResult(prefill) {
   showForm(prefill);
   if (prefill._scanned) {
     const banner = document.getElementById('scanBanner');
-    if (banner) {
-      banner.style.display = 'block';
-      banner.innerHTML = `<div class="scan-result">
-        <div class="scan-result-header">✓ Photo captured — fill in the details below</div>
-        ${prefill.coverImg ? `<img src="${prefill.coverImg}" style="width:60px;height:78px;object-fit:cover;border-radius:4px;margin-top:4px">` : ''}
-      </div>`;
-    }
+    if (!banner) return;
+    banner.style.display = 'block';
+
+    const identified = prefill.title && prefill.title.length > 0;
+    const fields = identified ? [
+      prefill.title && `<div class="scan-field"><span class="sf-label">Title</span><span class="sf-val">${prefill.title}</span></div>`,
+      prefill.system && `<div class="scan-field"><span class="sf-label">System</span><span class="sf-val">${prefill.system}</span></div>`,
+      prefill.edition && `<div class="scan-field"><span class="sf-label">Edition</span><span class="sf-val">${prefill.edition}</span></div>`,
+      prefill.printing && `<div class="scan-field"><span class="sf-label">Printing</span><span class="sf-val">${prefill.printing}</span></div>`,
+      prefill.priceMid && `<div class="scan-field"><span class="sf-label">Est. mid price</span><span class="sf-val" style="color:var(--amber-light)">${fmtMoney(prefill.priceMid)}</span></div>`,
+    ].filter(Boolean).join('') : '';
+
+    banner.innerHTML = `<div class="scan-result" style="display:flex;gap:12px;align-items:flex-start">
+      ${prefill.coverImg ? `<img src="${prefill.coverImg}" style="width:56px;height:72px;object-fit:cover;border-radius:4px;flex-shrink:0">` : ''}
+      <div style="flex:1">
+        <div class="scan-result-header">${identified ? '✓ Book identified — review and save' : '⚠ Not recognized — please fill in below'}</div>
+        ${fields}
+      </div>
+    </div>`;
   }
 }
 

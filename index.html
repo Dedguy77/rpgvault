@@ -141,16 +141,16 @@
   </div>
 
   <!-- ══════════════════════════════════════
-       CAMERA VIEW
+       CAMERA VIEW — fullscreen, no nav
   ══════════════════════════════════════ -->
-  <div id="cameraView" class="screen" style="background:#000">
+  <div id="cameraView" class="screen">
     <div class="camera-topbar">
       <button class="icon-btn" style="color:#fff" onclick="goBack()" aria-label="Back">←</button>
       <span>Scan book cover</span>
     </div>
     <div class="viewfinder-wrap">
-      <video id="cameraVideo" autoplay playsinline muted style="display:none"></video>
-      <div id="cameraPlaceholder" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">
+      <video id="cameraVideo" autoplay playsinline muted style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>
+      <div id="cameraPlaceholder" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;position:absolute;inset:0">
         <div style="text-align:center;color:#A07840">
           <div style="font-size:48px;margin-bottom:14px">📷</div>
           <p style="font-size:14px">Starting camera…</p>
@@ -165,9 +165,9 @@
       </div>
     </div>
     <div class="camera-controls">
-      <button class="camera-file-btn" onclick="choosePhoto()">📂 Choose photo</button>
+      <button class="camera-file-btn" onclick="choosePhoto()">📂 Gallery</button>
       <button class="shutter-btn" onclick="capturePhoto()" aria-label="Take photo"></button>
-      <div style="width:90px"></div>
+      <div style="min-width:80px"></div>
     </div>
   </div>
 
