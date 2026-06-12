@@ -652,6 +652,19 @@ For prices, use your knowledge of the collectible RPG market. Consider the editi
   }
 }
 
+// ─────────────────────────────────────────────
+//  DUPLICATE DETECTION
+// ─────────────────────────────────────────────
+function findDuplicates(title) {
+  if (!title) return [];
+  const needle = title.toLowerCase().trim();
+  return state.books.filter(b => {
+    const hay = (b.title || '').toLowerCase().trim();
+    // Exact match or one contains the other (handles subtitle variations)
+    return hay === needle || hay.includes(needle) || needle.includes(hay);
+  });
+}
+
 function showScanResult(prefill) {
   showForm(prefill);
   if (prefill._scanned) {
@@ -660,6 +673,24 @@ function showScanResult(prefill) {
     banner.style.display = 'block';
 
     const identified = prefill.title && prefill.title.length > 0;
+
+    // Check for duplicates in existing collection
+    const dupes = identified ? findDuplicates(prefill.title) : [];
+
+    const dupeWarning = dupes.length > 0 ? `
+      <div style="background:#8B1A1A22;border:1px solid #8B1A1A66;border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;gap:10px;align-items:flex-start">
+        <span style="font-size:18px;flex-shrink:0">⚠️</span>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:#E07070;margin-bottom:4px">Already in your collection</div>
+          ${dupes.map(d => `
+            <div style="font-size:12px;color:var(--text2);line-height:1.5">
+              ${d.title}${d.edition ? ' · ' + d.edition : ''}${d.printing ? ' · ' + d.printing : ''} · <span style="color:${d.condition === 'Good' || d.condition === 'Fair' ? 'var(--amber-light)' : 'var(--green-light)'}">${d.condition}</span>
+            </div>
+          `).join('')}
+          <div style="font-size:11px;color:var(--text3);margin-top:4px">You can still add another copy below.</div>
+        </div>
+      </div>` : '';
+
     const fields = identified ? [
       prefill.title && `<div class="scan-field"><span class="sf-label">Title</span><span class="sf-val">${prefill.title}</span></div>`,
       prefill.system && `<div class="scan-field"><span class="sf-label">System</span><span class="sf-val">${prefill.system}</span></div>`,
@@ -668,13 +699,41 @@ function showScanResult(prefill) {
       prefill.priceMid && `<div class="scan-field"><span class="sf-label">Est. mid price</span><span class="sf-val" style="color:var(--amber-light)">${fmtMoney(prefill.priceMid)}</span></div>`,
     ].filter(Boolean).join('') : '';
 
-    banner.innerHTML = `<div class="scan-result" style="display:flex;gap:12px;align-items:flex-start">
-      ${prefill.coverImg ? `<img src="${prefill.coverImg}" style="width:56px;height:72px;object-fit:cover;border-radius:4px;flex-shrink:0">` : ''}
-      <div style="flex:1">
-        <div class="scan-result-header">${identified ? '✓ Book identified — review and save' : '⚠ Not recognized — please fill in below'}</div>
-        ${fields}
-      </div>
-    </div>`;
+    banner.innerHTML = `
+      ${dupeWarning}
+      <div class="scan-result" style="display:flex;gap:12px;align-items:flex-start">
+        ${prefill.coverImg ? `<img src="${prefill.coverImg}" style="width:56px;height:72px;object-fit:cover;border-radius:4px;flex-shrink:0">` : ''}
+        <div style="flex:1">
+          <div class="scan-result-header">${identified ? '✓ Book identified — review and save' : '⚠ Not recognized — please fill in below'}</div>
+          ${fields}
+        </div>
+      </div>`;
+  }
+}
+
+// Also check for duplicates when adding manually — runs on title field blur
+function checkDuplicateManual() {
+  const title = document.getElementById('fTitle').value.trim();
+  const editId = document.getElementById('formView').dataset.editId;
+  if (!title || editId) return; // skip on edits
+
+  const dupes = findDuplicates(title);
+  const existing = document.getElementById('manualDupeWarning');
+  if (existing) existing.remove();
+
+  if (dupes.length > 0) {
+    const warning = document.createElement('div');
+    warning.id = 'manualDupeWarning';
+    warning.style.cssText = 'background:#8B1A1A22;border:1px solid #8B1A1A66;border-radius:8px;padding:10px 12px;margin-top:-8px;margin-bottom:14px;display:flex;gap:10px;align-items:flex-start';
+    warning.innerHTML = `
+      <span style="font-size:18px;flex-shrink:0">⚠️</span>
+      <div>
+        <div style="font-size:12px;font-weight:600;color:#E07070;margin-bottom:4px">Already in your collection</div>
+        ${dupes.map(d => `<div style="font-size:12px;color:var(--text2);line-height:1.5">${d.title}${d.edition ? ' · ' + d.edition : ''}${d.printing ? ' · ' + d.printing : ''} · <span style="color:var(--amber-light)">${d.condition}</span></div>`).join('')}
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">You can still save this as a second copy.</div>
+      </div>`;
+    const titleGroup = document.getElementById('fTitle').closest('.form-group');
+    titleGroup.insertAdjacentElement('afterend', warning);
   }
 }
 
@@ -703,6 +762,10 @@ function populateForm(prefill) {
 
   const banner = document.getElementById('scanBanner');
   if (banner) banner.style.display = 'none';
+
+  // Clear any leftover duplicate warning
+  const oldWarning = document.getElementById('manualDupeWarning');
+  if (oldWarning) oldWarning.remove();
 }
 
 function submitForm() {
